@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -30,18 +29,18 @@ func StartMail() (*MailService, error) {
 
 	b, err := ioutil.ReadFile("credentials/client_secret.json")
 	if err != nil {
-		log.Fatalf("Unable to read client secret file: %v", err)
+		return nil, err
 	}
 
 	config, err := google.ConfigFromJSON(b, gmail.GmailSendScope, gmail.GmailLabelsScope)
 	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
+		return nil, err
 	}
 	client := getClient(ctx, config)
 
 	srv, err := gmail.New(client)
 	if err != nil {
-		log.Fatalf("Unable to retrieve gmail Client %v", err)
+		return nil, err
 	}
 	return &MailService{Service: srv}, nil
 
