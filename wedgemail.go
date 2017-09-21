@@ -19,6 +19,7 @@ type injection struct {
 	PO     string
 }
 
+// MailService holds gmail service passes to methods
 type MailService struct {
 	Service *gmail.Service
 }
@@ -49,7 +50,7 @@ func StartMail() (*MailService, error) {
 // Email sends email with attachments.
 func (ms *MailService) Email(to []string, subject string, content string, fileName ...string) error {
 	from := mail.Address{Name: "WedgeNix", Address: "wedgenix.customercare@gmail.com"}
-	toStr := mail.Address{Name: "", Address: strings.Join(to, ",")}
+	toStr := strings.Join(to, ",")
 	var message gmail.Message
 
 	boundary := "__WedgeNix_Server_Mailing__"
@@ -72,7 +73,7 @@ func (ms *MailService) Email(to []string, subject string, content string, fileNa
 
 	messageBody := []byte("Content-Type: multipart/mixed; boundary=" + boundary + " \n" +
 		"MIME-Version: 1.0\n" +
-		"to: " + toStr.String() + "\n" +
+		"to: " + toStr + "\n" +
 		"from: " + from.String() + "\n" +
 		"subject: " + subject + "\n\n" +
 
@@ -107,7 +108,7 @@ func encodeWeb64String(b []byte) string {
 	return s[0 : i+1]
 }
 
-func chunkSplit(body string, limit int, end string) string {
+func chunkSplit(body string, limit int, end string) (res string) {
 
 	var charSlice []rune
 
@@ -116,13 +117,16 @@ func chunkSplit(body string, limit int, end string) string {
 		charSlice = append(charSlice, char)
 	}
 
-	result := ""
+	defer func() {
+		recover()
+		res = string(charSlice) + end
+	}()
 
 	for len(charSlice) >= 1 {
 		// convert slice/array back to string
 		// but insert end at specified limit
 
-		result = result + string(charSlice[:limit]) + end
+		res = res + string(charSlice[:limit]) + end
 
 		// discard the elements that were copied over to result
 		charSlice = charSlice[limit:]
@@ -136,6 +140,6 @@ func chunkSplit(body string, limit int, end string) string {
 
 	}
 
-	return result
+	return
 
 }
