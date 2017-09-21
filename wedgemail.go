@@ -3,10 +3,14 @@ package wedgemail
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"io/ioutil"
+	"math"
+	"math/rand"
 	"net/http"
 	"net/mail"
 	"strings"
+	"time"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
@@ -57,6 +61,9 @@ func (ms *MailService) Email(to []string, subject string, content string, fileNa
 
 	var attachments string
 	for _, name := range fileName {
+		if name == "" {
+			continue
+		}
 		fileBytes, err := ioutil.ReadFile(name)
 		fileMIMEType := http.DetectContentType(fileBytes)
 		fileData := base64.StdEncoding.EncodeToString(fileBytes)
@@ -88,12 +95,26 @@ func (ms *MailService) Email(to []string, subject string, content string, fileNa
 		"--" + boundary + "--")
 
 	message.Raw = base64.URLEncoding.EncodeToString(messageBody)
-
-	_, err := ms.Service.Users.Messages.Send("me", &message).Do()
-	if err != nil {
-		return err
+	attempts := 0.0
+	for {
+		_, err := ms.Service.Users.Messages.Send("me", &message).Do()
+		if err != nil {
+			five := strings.Contains(err.Error(), "500")
+			four := strings.Contains(err.Error(), "429")
+			if five || four {
+				maxWait := 48000
+				wait := int(math.Min(float64(maxWait), math.Pow(2, attempts)+float64(rand.Intn(1000))+1))
+				time.Sleep(time.Duration(wait) * time.Millisecond)
+				attempts++
+				if wait == maxWait {
+					return errors.New("Attempts hit max")
+				}
+				continue
+			}
+			return err
+		}
+		return nil
 	}
-	return nil
 }
 
 func encodeWeb64String(b []byte) string {
