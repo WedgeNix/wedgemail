@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"io"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -51,8 +52,13 @@ func StartMail() (*MailService, error) {
 
 }
 
+type Attachment struct {
+	Name string
+	io.Reader
+}
+
 // Email sends email with attachments.
-func (ms *MailService) Email(to []string, subject string, content string, fileName ...string) error {
+func (ms *MailService) Email(to []string, subject string, content string, atts ...Attachment) error {
 	from := mail.Address{Name: "WedgeNix", Address: "wedgenix.customercare@gmail.com"}
 	toStr := strings.Join(to, ",")
 	var message gmail.Message
@@ -60,21 +66,21 @@ func (ms *MailService) Email(to []string, subject string, content string, fileNa
 	boundary := "__WedgeNix_Server_Mailing__"
 
 	var attachments string
-	for _, name := range fileName {
-		if name == "" {
+	for _, att := range atts {
+		if len(att.Name) == 0 || att.Reader == nil {
 			continue
 		}
-		fileBytes, err := ioutil.ReadFile(name)
+		fileBytes, err := ioutil.ReadAll(att)
 		fileMIMEType := http.DetectContentType(fileBytes)
 		fileData := base64.StdEncoding.EncodeToString(fileBytes)
 		if err != nil {
 			return err
 		}
 		attachments += "--" + boundary + "\n" +
-			"Content-Type: " + fileMIMEType + "; name=" + string('"') + name + string('"') + " \n" +
+			"Content-Type: " + fileMIMEType + "; name=" + string('"') + att.Name + string('"') + " \n" +
 			"MIME-Version: 1.0\n" +
 			"Content-Transfer-Encoding: base64\n" +
-			"Content-Disposition: attachment; filename=" + string('"') + name + string('"') + " \n\n" +
+			"Content-Disposition: attachment; filename=" + string('"') + att.Name + string('"') + " \n\n" +
 			chunkSplit(fileData, 76, "\n")
 	}
 
