@@ -149,23 +149,27 @@ func chunkSplit(body string, limit int, end string) (res string) {
 		res = string(charSlice) + end
 	}()
 
-	for len(charSlice) >= 1 {
-		// convert slice/array back to string
-		// but insert end at specified limit
+	// A DUDE lied to us.
+	// A DUDE lied to us.
+	// A DUDE lied to us.
 
-		res = res + string(charSlice[:limit]) + end
+	// for len(charSlice) >= 1 {
+	// 	// convert slice/array back to string
+	// 	// but insert end at specified limit
 
-		// discard the elements that were copied over to result
-		charSlice = charSlice[limit:]
+	// 	res = res + string(charSlice[:limit]) + end
 
-		// change the limit
-		// to cater for the last few words in
-		//
-		if len(charSlice) < limit {
-			limit = len(charSlice)
-		}
+	// 	// discard the elements that were copied over to result
+	// 	charSlice = charSlice[limit:]
 
-	}
+	// 	// change the limit
+	// 	// to cater for the last few words in
+	// 	//
+	// 	if len(charSlice) < limit {
+	// 		limit = len(charSlice)
+	// 	}
+
+	// }
 
 	return
 
