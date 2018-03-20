@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"io"
-	"io/ioutil"
 	"math"
 	"math/rand"
-	"net/http"
 	"net/mail"
+	"reflect"
 	"strings"
 	"time"
+
+	"google.golang.org/api/googleapi"
+
+	"io/ioutil"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
@@ -26,6 +28,7 @@ type injection struct {
 
 // MailService holds gmail service passes to methods
 type MailService struct {
+	From    *mail.Address
 	Service *gmail.Service
 }
 
@@ -38,7 +41,7 @@ func StartMail() (*MailService, error) {
 		return nil, err
 	}
 
-	config, err := google.ConfigFromJSON(b, gmail.GmailSendScope, gmail.GmailLabelsScope)
+	config, err := google.ConfigFromJSON(b, gmail.MailGoogleComScope)
 	if err != nil {
 		return nil, err
 	}
@@ -52,75 +55,79 @@ func StartMail() (*MailService, error) {
 
 }
 
-type Attachment struct {
-	Name string
-	io.Reader
+type wrapper struct {
+	v interface{}
+	error
+	attempts float64
 }
 
-// Email sends email with attachments.
-func (ms *MailService) Email(to []string, subject string, content string, atts ...Attachment) error {
-	from := mail.Address{Name: "WedgeNix", Address: "wedgenix.customercare@gmail.com"}
-	toStr := strings.Join(to, ",")
-	var message gmail.Message
+func (w *wrapper) wrap(i interface{}, err error) *wrapper {
+	w.v = i
+	w.error = err
+	return w
+}
 
-	boundary := "__WedgeNix_Server_Mailing__"
+// // expDo is an exponential backoff func to use with Do() for gmail api.
+// func (w *wrapper) expDo(v interface{}, err *error) bool {
+// 	if w.error != nil {
+// 		five := strings.Contains(w.error.Error(), "500")
+// 		four := strings.Contains(w.error.Error(), "429")
+// 		if five || four {
+// 			maxWait := 48000
+// 			wait := int(math.Min(float64(maxWait), math.Pow(2, w.attempts)+float64(rand.Intn(1000))+1))
+// 			time.Sleep(time.Duration(wait) * time.Millisecond)
+// 			w.attempts++
+// 			if wait == maxWait {
+// 				*err = errors.New("Attempts hit max")
+// 				return false
+// 			}
+// 			return true
+// 		}
+// 		*err = w.error
+// 		return false
+// 	}
+// 	if v == nil {
+// 		return false
+// 	}
+// 	switch ptr := v.(type) {
+// 	case *gmail.ListMessagesResponse:
+// 		*ptr = *w.v.(*gmail.ListMessagesResponse)
+// 	case *gmail.Message:
+// 		*ptr = *w.v.(*gmail.Message)
+// 	default:
+// 		panic("Unknown Type for expDo()")
+// 	}
+// 	return false
+// }
 
-	var attachments string
-	for _, att := range atts {
-		if len(att.Name) == 0 || att.Reader == nil {
-			continue
-		}
-		fileBytes, err := ioutil.ReadAll(att)
-		fileMIMEType := http.DetectContentType(fileBytes)
-		fileData := base64.StdEncoding.EncodeToString(fileBytes)
-		if err != nil {
-			return err
-		}
-		attachments += "--" + boundary + "\n" +
-			"Content-Type: " + fileMIMEType + "; name=" + string('"') + att.Name + string('"') + " \n" +
-			"MIME-Version: 1.0\n" +
-			"Content-Transfer-Encoding: base64\n" +
-			"Content-Disposition: attachment; filename=" + string('"') + att.Name + string('"') + " \n\n" +
-			chunkSplit(fileData, 76, "\n")
+// expDo is an exponential backoff func to use with Do() for gmail api.
+func expDo(f interface{}, ret interface{}, options ...googleapi.CallOption) error {
+	var attempts float64
+	const maxWait = 48000
+	var wait int
+	vf := reflect.ValueOf(f)
+	var ops []reflect.Value
+	for _, op := range options {
+		ops = append(ops, reflect.ValueOf(op))
 	}
+	for wait < maxWait {
+		result := vf.Call(ops)
+		ret = result[0].Interface()
 
-	messageBody := []byte("Content-Type: multipart/mixed; boundary=" + boundary + " \n" +
-		"MIME-Version: 1.0\n" +
-		"to: " + toStr + "\n" +
-		"from: " + from.String() + "\n" +
-		"subject: " + subject + "\n\n" +
-
-		"--" + boundary + "\n" +
-		"Content-Type: text/html; charset=" + string('"') + "UTF-8" + string('"') + "\n" +
-		"MIME-Version: 1.0\n" +
-		"Content-Transfer-Encoding: 7bit\n\n" +
-		content + "\n\n" +
-
-		attachments +
-
-		"--" + boundary + "--")
-
-	message.Raw = base64.URLEncoding.EncodeToString(messageBody)
-	attempts := 0.0
-	for {
-		_, err := ms.Service.Users.Messages.Send("me", &message).Do()
-		if err != nil {
+		if err := result[1].Interface().(error); err != nil {
 			five := strings.Contains(err.Error(), "500")
 			four := strings.Contains(err.Error(), "429")
 			if five || four {
-				maxWait := 48000
-				wait := int(math.Min(float64(maxWait), math.Pow(2, attempts)+float64(rand.Intn(1000))+1))
+				wait = int(math.Min(float64(maxWait), math.Pow(2, attempts)+float64(rand.Intn(1000))+1))
 				time.Sleep(time.Duration(wait) * time.Millisecond)
 				attempts++
-				if wait == maxWait {
-					return errors.New("Attempts hit max")
-				}
 				continue
 			}
 			return err
 		}
 		return nil
 	}
+	return errors.New("Attempts hit max")
 }
 
 func encodeWeb64String(b []byte) string {
@@ -133,44 +140,4 @@ func encodeWeb64String(b []byte) string {
 	}
 
 	return s[0 : i+1]
-}
-
-func chunkSplit(body string, limit int, end string) (res string) {
-
-	var charSlice []rune
-
-	// push characters to slice
-	for _, char := range body {
-		charSlice = append(charSlice, char)
-	}
-
-	defer func() {
-		recover()
-		res = string(charSlice) + end
-	}()
-
-	// A DUDE lied to us.
-	// A DUDE lied to us.
-	// A DUDE lied to us.
-
-	// for len(charSlice) >= 1 {
-	// 	// convert slice/array back to string
-	// 	// but insert end at specified limit
-
-	// 	res = res + string(charSlice[:limit]) + end
-
-	// 	// discard the elements that were copied over to result
-	// 	charSlice = charSlice[limit:]
-
-	// 	// change the limit
-	// 	// to cater for the last few words in
-	// 	//
-	// 	if len(charSlice) < limit {
-	// 		limit = len(charSlice)
-	// 	}
-
-	// }
-
-	return
-
 }
