@@ -8,6 +8,7 @@ import (
 	"net/mail"
 	"strings"
 
+	"github.com/OuttaLineNomad/throttle"
 	"google.golang.org/api/gmail/v1"
 )
 
@@ -62,7 +63,18 @@ func (ms *MailService) Email(to []string, subject string, content string, atts .
 
 		"--" + boundary + "--")
 	message.Raw = base64.URLEncoding.EncodeToString(messageBody)
-
-	err = expDo(ms.Service.Users.Messages.Send("me", &message).Do, nil)
+	err = backoff.Run(func() (err error) {
+		_, err = ms.Service.Users.Messages.Send("me", &message).Do()
+		if err != nil {
+			five := strings.Contains(err.Error(), "500")
+			four := strings.Contains(err.Error(), "429")
+			if five || four {
+				return err
+			}
+			throttle.NoGos(err)
+		}
+		return nil
+	})
+	// err = expDo(ms.Service.Users.Messages.Send("me", &message).Do, nil)
 	return
 }

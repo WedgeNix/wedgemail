@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"strings"
 
+	"github.com/OuttaLineNomad/throttle"
 	"google.golang.org/api/gmail/v1"
 )
 
@@ -14,24 +15,36 @@ type AttachemtFiles struct {
 }
 
 // GetQuery gets a list of messages matching query.
-func (ms *MailService) GetQuery(q string) (msgs gmail.ListMessagesResponse, err error) {
-	err = expDo(ms.Service.Users.Messages.List("me").Q(q).Do, &msgs)
-	return
+func (ms *MailService) GetQuery(q string) (*gmail.ListMessagesResponse, error) {
+	// msgs := &gmail.ListMessagesResponse{}
+	msgs, err := ms.Service.Users.Messages.List("me").Q(q).Do()
+	return msgs, err
 }
 
 // GetAttachments gets slice of AttachemtFiles which has name and bites for each file
-func (ms *MailService) GetAttachments(list []*gmail.Message, ext []string) (files []AttachemtFiles, err error) {
+func (ms *MailService) GetAttachments(list []*gmail.Message, ext []string) ([]AttachemtFiles, error) {
 	attchs := []AttachemtFiles{}
 	for _, msg := range list {
 		msgID := msg.Id
 
-		var usrMsg gmail.Message
-		err = expDo(ms.Service.Users.Messages.Get("me", msgID).Do, &usrMsg)
+		var usrMsg *gmail.Message
+		err := backoff.Run(func() (err error) {
+			usrMsg, err = ms.Service.Users.Messages.Get("me", msgID).Do()
+			if err != nil {
+				five := strings.Contains(err.Error(), "500")
+				four := strings.Contains(err.Error(), "429")
+				if five || four {
+					return err
+				}
+				throttle.NoGos(err)
+			}
+			return nil
+		})
+		// err := expDo(ms.Service.Users.Messages.Get("me", msgID).Do, &usrMsg)
 		if err != nil {
 			return nil, err
 		}
 
-		println("parts:", len(usrMsg.Payload.Parts))
 		for _, part := range usrMsg.Payload.Parts {
 			attID := part.Body.AttachmentId
 			if attID == "" {
@@ -41,8 +54,20 @@ func (ms *MailService) GetAttachments(list []*gmail.Message, ext []string) (file
 			if !findExt(attName, ext) {
 				continue
 			}
-			var msgBody gmail.MessagePartBody
-			err = expDo(ms.Service.Users.Messages.Attachments.Get("me", msgID, attID).Do, &msgBody)
+			var msgBody *gmail.MessagePartBody
+			err := backoff.Run(func() (err error) {
+				msgBody, err = ms.Service.Users.Messages.Attachments.Get("me", msgID, attID).Do()
+				if err != nil {
+					five := strings.Contains(err.Error(), "500")
+					four := strings.Contains(err.Error(), "429")
+					if five || four {
+						return err
+					}
+					throttle.NoGos(err)
+				}
+				return nil
+			})
+			// err := expDo(ms.Service.Users.Messages.Attachments.Get("me", msgID, attID).Do, &msgBody)
 			if err != nil {
 				return nil, err
 			}

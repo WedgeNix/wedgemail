@@ -2,8 +2,10 @@ package wedgemail
 
 import (
 	"errors"
-	"fmt"
 	"log"
+	"strings"
+
+	"github.com/OuttaLineNomad/throttle"
 
 	gmail "google.golang.org/api/gmail/v1"
 )
@@ -17,14 +19,15 @@ func (ms *MailService) Label(msgs []*gmail.Message, label []string) (err error) 
 
 	listMap := map[string]string{}
 	for _, label := range list.Labels {
-		listMap[label.Name] = label.Id
+		lName := strings.ToLower(label.Name)
+		listMap[lName] = label.Id
 	}
 	sendLabel := []string{}
 	for _, l := range label {
-		if id, ok := listMap[l]; ok {
+		if id, ok := listMap[strings.ToLower(l)]; ok {
 			sendLabel = append(sendLabel, id)
 		} else {
-			return errors.New(`the lable "` + l + `" you provided; was not found in lables`)
+			return errors.New(`the label "` + l + `" you provided; was not found in lables`)
 		}
 	}
 
@@ -33,11 +36,22 @@ func (ms *MailService) Label(msgs []*gmail.Message, label []string) (err error) 
 	}
 	gmsg := &gmail.Message{}
 	for _, msg := range msgs {
-		err := expDo(ms.Service.Users.Messages.Modify("me", msg.Id, ok).Do, gmsg)
+		err := backoff.Run(func() (err error) {
+			gmsg, err = ms.Service.Users.Messages.Modify("me", msg.Id, ok).Do()
+			if err != nil {
+				five := strings.Contains(err.Error(), "500")
+				four := strings.Contains(err.Error(), "429")
+				if five || four {
+					return err
+				}
+				throttle.NoGos(err)
+			}
+			return nil
+		})
+		// err := expDo(ms.Service.Users.Messages.Modify("me", msg.Id, ok).Do, gmsg)
 		if err != nil {
 			log.Panic(err)
 		}
 	}
-	fmt.Println(gmsg.Id)
 	return nil
 }
