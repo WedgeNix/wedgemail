@@ -88,7 +88,7 @@ func (ms *MailService) GetAttachments(list []*gmail.Message, ext []string) ([]At
 func findExt(name string, exts []string) bool {
 	want := strings.Split(name, ".")
 	for _, ext := range exts {
-		if want[1] == strings.ToLower(ext) {
+		if want[len(want)-1] == strings.ToLower(ext) {
 			return true
 		}
 	}
