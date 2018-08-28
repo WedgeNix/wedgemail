@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/OuttaLineNomad/throttle"
-
 	gmail "google.golang.org/api/gmail/v1"
 )
 
