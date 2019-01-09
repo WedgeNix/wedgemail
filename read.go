@@ -36,7 +36,7 @@ func (ms *MailService) GetAttachments(list []*gmail.Message, ext []string) ([]At
 				if five || four {
 					return err
 				}
-				throttle.NoGos(err)
+				return throttle.NoGos(err)
 			}
 			return nil
 		})
@@ -63,7 +63,7 @@ func (ms *MailService) GetAttachments(list []*gmail.Message, ext []string) ([]At
 					if five || four {
 						return err
 					}
-					throttle.NoGos(err)
+					return throttle.NoGos(err)
 				}
 				return nil
 			})

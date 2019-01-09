@@ -43,7 +43,7 @@ func (ms *MailService) Label(msgs []*gmail.Message, label []string) (err error) 
 				if five || four {
 					return err
 				}
-				throttle.NoGos(err)
+				return throttle.NoGos(err)
 			}
 			return nil
 		})

@@ -71,7 +71,7 @@ func (ms *MailService) Email(to []string, subject string, content string, atts .
 			if five || four {
 				return err
 			}
-			throttle.NoGos(err)
+			return throttle.NoGos(err)
 		}
 		return nil
 	})
